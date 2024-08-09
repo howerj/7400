@@ -174,7 +174,7 @@ size =cell - tep !
 
 : branch 2/ iJUMP ;
 : ?branch 2/ iJUMPZ ;
-: call 2/ ( iJUMP -> ) C000 or ;
+: call 2/ ( iJUMP -> ) B000 or ;
 : thread 2/ ;
 : thread, thread t, ;
 :m postpone t' thread, ;m
@@ -243,6 +243,7 @@ label: start \ Forth VM entry point
   \ -- fall-through --
 label: vm ( The Forth virtual machine )
 assembler.1 +order
+
   ip iLOAD-C      \ load `ip`, or instruction pointer
   t iSTORE-C      \ save a copy
   one iADD        \ increment ptr to next instruction
@@ -251,14 +252,15 @@ assembler.1 +order
 primitive 2/ iADD \ subtract location (primitive is negated)
 high 2/ iAND      \ is high bit set?
   if              \ yes: must be instruction
-\    t iLOAD       \ load current instruction, again
-    t iPC!           \ jump to VM instruction
+    t iLOAD       \ load current instruction, again
+    t 2/ iPC!           \ jump to VM instruction
   then \ no: must be another Forth word to call
   ++rp            \ increment return stack pointer
   ip iLOAD-C      \ load location of next instruction
   {rp} iSTORE     \ store return location
   t iLOAD         \ load through current instruction pointer
   ip iSTORE-C     \ store it `ip`, completing call
+\  58 iLITERAL set iSTORE
   vm branch       \ and do it all again!
 assembler.1 -order
 \ Note that as the entire address space is unlikely to be
@@ -374,7 +376,7 @@ a: opNext
 :m aft drop mark begin swap ;m
 :m next talign opNext 2/ t, ;m
 
-a: bye there iJUMP (a);   ( -- : bye bye! )
+a: bye there branch (a);   ( -- : bye bye! )
 
 a: and ( u u -- u : bit wise AND )
   {sp} iLOAD
@@ -388,37 +390,21 @@ a: or ( u u -- u : bit wise OR )
   decSp branch
   (a);
 
+a: + ( u u -- u : bit wise OR )
+  {sp} iLOAD
+  tos 2/ iADD
+  decSp branch
+  (a);
+
 a: xor ( u u -- u : bit wise XOR )
   {sp} iLOAD
   tos 2/ iXOR
   decSp branch
   (a);
 
-a: lls ( u shift -- u : shift left by number of bits set )
-  {sp} iLOAD
-\  tos 2/ iLSHIFT
-  decSp branch
+a: lrs ( u -- u : shift right by number of bits set )
+  tos 2/ iRSHIFT
   (a);
-
-a: lrs ( u shift -- u : shift right by number of bits set )
-  {sp} iLOAD
-\  tos 2/ iRSHIFT
-  decSp branch
-  (a);
-
-\         : rshift begin ?dup while 1- swap 2/ swap repeat ;
-\         : lshift begin ?dup while 1- swap 2* swap repeat ;
-
-a: um+ ( u u -- u f : Add with carry )
-  {sp} iLOAD
-  tos 2/ iADD
-  {sp} iSTORE
-\  flags?
-\  one iAND
-\  tos iSTORE-C
-  zero iLOAD-C
-  tos iSTORE-C
-  a;
 
 a: @ ( a -- u : load a memory address )
   tos iLOAD-C
@@ -498,6 +484,12 @@ a: rp! ( u -- , R: ??? --- ??? : set return stack depth )
   .drop branch
   (a);
 
+a: (emit) ( u -- )
+  tos iLOAD-C
+  set iSTORE
+  .drop branch
+  (a);
+
 \ VM+primitives are less than 350 bytes!
 there t2/ negate primitive t! \ Forth code after this
 \ --- ---- ---- ---- no more direct assembly ---- ---- ---- --- 
@@ -505,8 +497,17 @@ there t2/ negate primitive t! \ Forth code after this
 assembler.1 -order
 
 :h #1 1 lit ;t ( --  1 : push  1 onto variable stack )
-:t 2* #1 lls ;t           ( u -- u : multiply by two )
-:t 2/ #1 lrs ;t           ( u -- u : divide by two )
+:h #-1 -1 lit ;t
+:to + + ;t ( n n -- n )
+: 1- #-1 + ;
+: invert -1 lit xor ; ( u -- u )
+: negate 1- invert ; ( n -- n : negate [twos compliment] )
+: - negate + ;       ( u u -- u : subtract )
+:t 2* dup + ;t           ( u -- u : multiply by two )
+:t 2/  lrs ;t           ( u -- u : divide by two )
+: ?dup dup if dup then ; ( u -- u u | 0 : dup if not zero )
+: rshift begin ?dup while 1- swap 2/ swap repeat ;
+: lshift begin ?dup while 1- swap 2* swap repeat ;
 :h (var) r> 2* ;t         ( -- a : used in `variable` )
 :h (const) r> :f v@ 2* @ ;t     ( -- u : used in `constant` )
 :m variable :t tdrop (var) 0 t, ;m ( meta-compiler `variable` )
@@ -514,9 +515,7 @@ assembler.1 -order
 :m hvar :h tdrop (var) 0 t, ;m     ( make headerless variable )
 :m hconst :h tdrop (const) t, ;m   ( make headerless constant )
  0 hconst #0   ( -- 0 : space saving measure, push `0` )
--1 hconst #-1  ( -- -1 : space saving measure, push `-1` )
 FF hconst #ff  ( -- 255 : space saving measure, push `255` )
-8002 hconst uctrl ( -- 8002 : uart control register )
 20 constant bl   ( -- space : push a space, 32 )
  2 constant cell ( -- u: size of memory cell in bytes )
 :m : :t ;m
@@ -525,35 +524,27 @@ FF hconst #ff  ( -- 255 : space saving measure, push `255` )
 :to and and ; ( u u -- u )
 :to or or ; ( u u -- u )
 :to xor xor ; ( u u -- u )
-:to um+ um+ ; ( u u -- u carry )
 :to @ @ ; ( a -- u )
 :to ! ! ; ( u a -- )
 :to dup dup ; ( u -- u u )
 :to drop drop ; ( u -- )
 :to swap swap ; ( u1 u2 -- u2 u1 )
-: + um+ drop ; ( n n -- n )
 :h sp@ {sp} lit @ :f 1+ #1 + ; ( -- u )
-:h rp@ {rp} lit @ :f 1- #-1 + ; ( -- u )
+:h rp@ {rp} lit @ 1- ; ( -- u )
 : execute 2/ >r ; ( xt -- )
-: invert #-1 xor ; ( u -- u )
-: negate 1- invert ; ( n -- n : negate [twos compliment] )
-: - negate + ;       ( u u -- u : subtract )
 \ :h sp! 2 lit - {sp} lit ! ;
 : 0= if #0 exit then #-1 ; ( u -- f )
 :h bit #1 and ;
-: c@ dup @ swap bit if #ff lrs then :f lsb #ff and ;
+: c@ dup @ swap bit if 8 lit rshift then :f lsb #ff and ;
 : c! ( c b -- : store character at address )
   dup dup >r bit if
-    @ lsb swap #ff lls
+    @ lsb swap 8 lit lshift
   else
     @ FF00 lit and swap lsb
   then or r> ! ;
-: emit ( ch -- )
-  begin uctrl @ 1000 lit and 0= until ( wait until not full )
-  lsb 2000 lit or uctrl ! ; ( write char )
+: emit (emit) ; 
 : key? ( -- ch -1 | 0 )
-  uctrl @ 100 lit and if #0 exit then ( is empty? )
-  400 lit uctrl ! uctrl @ lsb #-1 ; ( read char )
+  8000 lit @ #-1 ; 
 variable state   ( -- a : compile/interpret state variable )
 variable dpl     ( -- a : double cell parse variable )
 variable hld     ( -- a : hold space variable )
@@ -572,7 +563,6 @@ hvar #h          ( -- a : dictionary pointer )
 : over swap dup >r swap r> ; ( u1 u2 -- u1 u2 u1 )
 : nip swap drop ;       ( u1 u2 -- u2 )
 : tuck swap over ;      ( u1 u2 -- u2 u1 u2 )
-: ?dup dup if dup then ; ( u -- u u | 0 : dup if not zero )
 : rot >r swap r> swap ; ( u1 u2 u3 -- u2 u3 u1 )
 : 2drop drop drop ;     ( u u -- : drop two numbers )
 : 2dup  over over ;     ( u1 u2 -- u1 u2 u1 u2 )
@@ -613,6 +603,8 @@ hvar #h          ( -- a : dictionary pointer )
       r> swap >r     ( saved-sp ) \ exc# on return stack
       sp! drop r>    ( exc# ) \ restore stack
     then ;
+: um+ 2dup + >r r@ 0>= >r ( u u -- u carry )
+ 2dup and 0< r> or >r or 0< r> and negate r> swap ;
 : um* ( u u -- ud : double cell width multiply )
   #0 swap ( u1 0 u2 ) F lit
   for dup um+ >r >r dup um+ r> + r>
@@ -850,6 +842,7 @@ save-target vm.bin
 .end
 .( DONE ) cr
 bye
+
 
 
 

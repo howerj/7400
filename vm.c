@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #define SZ (4096)
@@ -9,18 +10,19 @@ typedef struct {
 	int (*get)(void *in);
 	int (*put)(void *out, int ch);
 	void *in, *out;
+	FILE *debug;
 } vm_t;
 
 static inline uint16_t load(vm_t *v, uint16_t addr) {
 	assert(v);
-	if (addr & 0x8000)
+	if (addr & 0x4000)
 		return v->get(v->in);
 	return v->m[addr % SZ];
 }
 
 static inline void store(vm_t *v, uint16_t addr, uint16_t val) {
 	assert(v);
-	if (addr & 0x8000)
+	if (addr & 0x4000)
 		(void)v->put(v->out, val);
 	v->m[addr % SZ] = val;
 }
@@ -32,6 +34,7 @@ static int run(vm_t *v) {
 		const uint16_t ins = m[pc % SZ];
 		const uint16_t imm = ins & 0xFFF;
 		const uint16_t alu = (ins >> 12) & 0xF;
+		if (v->debug && fprintf(v->debug, "%04x:%04X %04X\n", (unsigned)pc, (unsigned)ins, (unsigned)a) < 0) return -1;
 		switch (alu) {
 		case 0: a = load(v, imm); pc++; break;
 		case 1: a = load(v, imm); a = load(v, a); pc++; break;
@@ -46,7 +49,7 @@ static int run(vm_t *v) {
 		case 10: a >>= 1; pc++; break;
 		case 11: if (pc == imm) running = 0; pc = imm; break;
 		case 12: pc++; if (!a) pc = imm; break;
-		case 13: break;
+		case 13: pc++; break;
 		case 14: store(v, imm, pc); pc = imm + 1; break;
 		//case 15: pc = load(v, imm) + 1; break;
 		case 15: pc = load(v, imm); break;
@@ -61,7 +64,8 @@ static int put(void *out, int ch) { return fputc(ch, (FILE*)out); }
 static int get(void *in) { return fgetc((FILE*)in); }
 
 int main(int argc, char **argv) {
-	vm_t vm = { .put = put, .get = get, .in = stdin, .out = stdout, };
+	vm_t vm = { .put = put, .get = get, .in = stdin, .out = stdout, /*.debug = stderr,*/ };
+	vm.debug = getenv("DEBUG") ? stderr : NULL; /* lazy options */
 	if (argc < 2) {
 		(void)fprintf(stderr, "Usage: %s prog.hex\n", argv[0]);
 		return 1;
