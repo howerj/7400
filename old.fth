@@ -822,7 +822,8 @@ hvar #h          ( -- a : dictionary pointer )
 :to \ source drop @ in! ; immediate
 :to immediate last nfa @ 40 lit or last nfa ! ;
 : dump 2/ for dup @ u. cell+ next drop ;
-: eval begin bl word dup c@ while 
+: eval 
+   begin bl word dup c@ while
    interpret #1 ?depth repeat drop ."  ok" cr ;
 :h ini hex postpone [ #0 in! #-1 dpl ! ; ( -- )
 : quit ( -- : interpreter loop [and more] )

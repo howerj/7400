@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#define SZ (4096)
+#define SZ (0x2000)
 
 typedef struct {
 	uint16_t m[SZ], pc, a;
@@ -15,14 +15,14 @@ typedef struct {
 
 static inline uint16_t load(vm_t *v, uint16_t addr) {
 	assert(v);
-	if (addr & 0x4000)
+	if (addr & 0x8000)
 		return v->get(v->in);
 	return v->m[addr % SZ];
 }
 
 static inline void store(vm_t *v, uint16_t addr, uint16_t val) {
 	assert(v);
-	if (addr & 0x4000)
+	if (addr & 0x8000)
 		(void)v->put(v->out, val);
 	v->m[addr % SZ] = val;
 }
@@ -51,7 +51,6 @@ static int run(vm_t *v) {
 		case 12: pc++; if (!a) pc = imm; break;
 		case 13: pc++; break;
 		case 14: store(v, imm, pc); pc = imm + 1; break;
-		//case 15: pc = load(v, imm) + 1; break;
 		case 15: pc = load(v, imm); break;
 		}
 	}
@@ -60,12 +59,24 @@ static int run(vm_t *v) {
 	return 0;
 }
 
-static int put(void *out, int ch) { return fputc(ch, (FILE*)out); }
-static int get(void *in) { return fgetc((FILE*)in); }
+static int put(void *out, int ch) { 
+	ch = fputc(ch, (FILE*)out); 
+	return fflush((FILE*)out) < 0 ? -1 : ch; 
+}
+
+static int get(void *in) { 
+	return fgetc((FILE*)in); 
+}
+
+static int option(const char *opt) {
+	char *r = getenv(opt);
+	if (!r) return 0;
+	return atoi(r); /* could do case insensitive check for "yes"/"on" = 1, and "no"/"off" = 0 as well */
+}
 
 int main(int argc, char **argv) {
 	vm_t vm = { .put = put, .get = get, .in = stdin, .out = stdout, /*.debug = stderr,*/ };
-	vm.debug = getenv("DEBUG") ? stderr : NULL; /* lazy options */
+	vm.debug = option("DEBUG") ? stderr : NULL; /* lazy options */
 	if (argc < 2) {
 		(void)fprintf(stderr, "Usage: %s prog.hex\n", argv[0]);
 		return 1;

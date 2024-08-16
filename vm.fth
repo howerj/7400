@@ -59,8 +59,11 @@ wordlist constant target.only.1
 
 meta.1 +order also definitions
 
+\ If VM size set to 4096 cells, setting `size` and `=end` to
+\ `1000` almost works
+
    2 constant =cell
-4000 constant size ( 16384 bytes, 8192 cells )
+2000 constant size 
 2000 constant =end ( 8192 bytes, leaving half for DP-BRAM )
   40 constant =stksz
   60 constant =buf
@@ -159,8 +162,7 @@ size =cell - tep !
 : iAND     7000 or t, ;
 : iOR      8000 or t, ;
 : iXOR     9000 or t, ;
-: iRSHIFT  A000 or t, ;
-\ : iLSHIFT  4000 or t, ;
+: iRSHIFT  A000 t, ;
 : iJUMP    B000 or t, ; \ Unconditional jump
 : iJUMPZ   C000 or t, ; \ Conditional Jump!
 
@@ -168,9 +170,6 @@ size =cell - tep !
 
 : iCALL    E000 or t, ;
 : iPC!     F000 or t, ;
-
-\ : iSET     E000 or t, ; \ Set CPU flags or program counter
-\ : iGET     F000 or t, ; \ Get CPU flags or program counter
 
 : branch 2/ iJUMP ;
 : ?branch 2/ iJUMPZ ;
@@ -198,9 +197,7 @@ label: entry ( previous instructions are irrelevant )
 0 t,  \ entry point to virtual machine
 
    \ Constants not variables
-   0 tvar @0        \ must contain `0`
    1 tvar @1        \ must contain `1`
-  10 tvar @16       \ must contain `16`
 8000 tvar high      \ must contain `8000`
 FFFF tvar set       \ all bits set, -1
 
@@ -220,7 +217,6 @@ FFFF tvar set       \ all bits set, -1
 
 TERMBUF =buf + constant =tbufend
 
-: zero @0 2/ ;
 : one @1 2/ ;
 : vcell one ;
 : -vcell set 2/ ;
@@ -228,9 +224,6 @@ TERMBUF =buf + constant =tbufend
 : ++sp {sp} iLOAD-C -vcell iADD {sp} iSTORE-C ;
 : --rp {rp} iLOAD-C -vcell iADD {rp} iSTORE-C ;
 : ++rp {rp} iLOAD-C  vcell iADD {rp} iSTORE-C ;
-\ : flags? 1 iGET ; \ Get CPU flags
-\ : pc@ 0 iGET ; \ Get Program Counter
-\ : pc! 0 iSET ; \ Store Accumulator to Program counter
 
 \ --- ---- ---- ---- Forth VM ---- ---- ---- ---- ---- ---- --- 
 
@@ -253,14 +246,14 @@ primitive 2/ iADD \ subtract location (primitive is negated)
 high 2/ iAND      \ is high bit set?
   if              \ yes: must be instruction
     t iLOAD       \ load current instruction, again
-    t 2/ iPC!           \ jump to VM instruction
+    t iSTORE-C    \ Store it back to `t`
+    t 2/ iPC!     \ jump to VM instruction
   then \ no: must be another Forth word to call
   ++rp            \ increment return stack pointer
   ip iLOAD-C      \ load location of next instruction
   {rp} iSTORE     \ store return location
   t iLOAD         \ load through current instruction pointer
   ip iSTORE-C     \ store it `ip`, completing call
-\  58 iLITERAL set iSTORE
   vm branch       \ and do it all again!
 assembler.1 -order
 \ Note that as the entire address space is unlikely to be
@@ -390,25 +383,27 @@ a: or ( u u -- u : bit wise OR )
   decSp branch
   (a);
 
-a: + ( u u -- u : bit wise OR )
-  {sp} iLOAD
-  tos 2/ iADD
-  decSp branch
-  (a);
-
 a: xor ( u u -- u : bit wise XOR )
   {sp} iLOAD
   tos 2/ iXOR
   decSp branch
   (a);
 
-a: lrs ( u -- u : shift right by number of bits set )
-  tos 2/ iRSHIFT
+a: + ( u u -- u : Addition )
+  {sp} iLOAD
+  tos 2/ iADD
+  decSp branch
   (a);
+
+a: lrs ( u -- u : shift right by number of bits set )
+  tos iLOAD-C
+  iRSHIFT
+  tos iSTORE-C
+  a;
 
 a: @ ( a -- u : load a memory address )
   tos iLOAD-C
-  one iRSHIFT
+  iRSHIFT
   tos iSTORE-C
   tos iLOAD
   tos iSTORE-C
@@ -416,7 +411,7 @@ a: @ ( a -- u : load a memory address )
 
 a: ! ( u a -- store a cell at a memory address )
   tos iLOAD-C
-  one iRSHIFT
+  iRSHIFT
   t iSTORE-C
   {sp} iLOAD
   t iSTORE
@@ -490,6 +485,14 @@ a: (emit) ( u -- )
   .drop branch
   (a);
 
+a: (key) ( -- u )
+  ++sp
+  tos iLOAD-C
+  {sp} iSTORE
+  set iLOAD
+  tos iSTORE-C
+  a;
+
 \ VM+primitives are less than 350 bytes!
 there t2/ negate primitive t! \ Forth code after this
 \ --- ---- ---- ---- no more direct assembly ---- ---- ---- --- 
@@ -500,11 +503,11 @@ assembler.1 -order
 :h #-1 -1 lit ;t
 :to + + ;t ( n n -- n )
 : 1- #-1 + ;
-: invert -1 lit xor ; ( u -- u )
+: invert #-1 xor ; ( u -- u )
 : negate 1- invert ; ( n -- n : negate [twos compliment] )
 : - negate + ;       ( u u -- u : subtract )
-:t 2* dup + ;t           ( u -- u : multiply by two )
-:t 2/  lrs ;t           ( u -- u : divide by two )
+: 2* dup + ;           ( u -- u : multiply by two )
+: 2/ lrs ;           ( u -- u : divide by two )
 : ?dup dup if dup then ; ( u -- u u | 0 : dup if not zero )
 : rshift begin ?dup while 1- swap 2/ swap repeat ;
 : lshift begin ?dup while 1- swap 2* swap repeat ;
@@ -532,7 +535,6 @@ FF hconst #ff  ( -- 255 : space saving measure, push `255` )
 :h sp@ {sp} lit @ :f 1+ #1 + ; ( -- u )
 :h rp@ {rp} lit @ 1- ; ( -- u )
 : execute 2/ >r ; ( xt -- )
-\ :h sp! 2 lit - {sp} lit ! ;
 : 0= if #0 exit then #-1 ; ( u -- f )
 :h bit #1 and ;
 : c@ dup @ swap bit if 8 lit rshift then :f lsb #ff and ;
@@ -542,9 +544,8 @@ FF hconst #ff  ( -- 255 : space saving measure, push `255` )
   else
     @ FF00 lit and swap lsb
   then or r> ! ;
-: emit (emit) ; 
-: key? ( -- ch -1 | 0 )
-  8000 lit @ #-1 ; 
+: emit ( 8000 lit ! ) (emit) ; 
+: key? ( 8000 lit @ ) (key) #-1 ; ( -- ch -1 | 0 )
 variable state   ( -- a : compile/interpret state variable )
 variable dpl     ( -- a : double cell parse variable )
 variable hld     ( -- a : hold space variable )
@@ -653,33 +654,8 @@ hvar #h          ( -- a : dictionary pointer )
     key dup bl - 5F lit u< if tap else ktap then
   repeat drop over - ;
 : query ( -- : get line )
-   source drop =buf lit accept #tib ! drop #0 :f in! >in ! ; 
+   source drop =buf lit accept #tib ! drop #0 :f in! >in ! ;
 :h ?depth depth > -4 lit and throw ; ( u -- )
-: -trailing ( b u -- b u : remove trailing spaces )
-  for
-    aft bl over r@ + c@ <
-      if r> 1+ exit then
-    then
-  next #0 ;
-:h look ( b u c xt -- b u : skip until *xt* test succeeds )
-  swap >r rot rot
-  begin
-    dup
-  while
-    over c@ r@ - r@ bl = 4 lit pick execute
-    if rdrop bury exit then
-    +string
-  repeat rdrop bury ;
-:h no-match if 0> exit then :f 0<> 0= 0= ; ( c1 c2 -- t )
-:h match no-match invert ;          ( c1 c2 -- t )
-: parse ( c -- b u ; <string> )
-  >r source drop >in @ + #tib @ >in @ - r@
-  >r over r> swap >r >r
-  r@ t' no-match lit look 2dup
-  ( b u c -- b u delta: )
-  r> t' match lit look swap r> - >r - r> 1+ 
-  >in +!
-  r> bl = if -trailing then #0 max ;
 :h base? base @ ;
 : spaces begin dup 0> while space 1- repeat drop ; ( +n -- )
 : hold #-1 hld +! hld @ c! ; ( c -- : save char to hold )
@@ -698,6 +674,33 @@ hvar #h          ( -- a : dictionary pointer )
 : u.r >r #0 <# #s #>  r> over - spaces type ;    ( u +n -- )
 : u. space #0 u.r ;                              ( u -- )
 : . dup >r abs #0 <# #s r> sign #> space type ;  ( n -- )
+: .s depth for aft r@ pick . then next ;
+: -trailing ( b u -- b u : remove trailing spaces )
+  for
+    aft bl over r@ + c@ <
+      if r> 1+ exit then
+    then
+  next #0 ;
+:h look ( b u c xt -- b u : skip until *xt* test succeeds )
+  swap >r rot rot
+  begin
+    dup
+  while
+    over c@ r@ - r@ bl = 4 lit pick execute
+    if rdrop bury exit then
+    +string
+  repeat rdrop bury ;
+:h no-match if 0> exit then :f 0<> 0= 0= ; ( c1 c2 -- t )
+:h match no-match invert ;          ( c1 c2 -- t )
+
+: parse ( c -- b u ; <string> )
+  >r source drop >in @ + #tib @ >in @ - r@
+  >r over r> swap >r >r
+  r@ t' no-match lit look 2dup
+  ( b u c -- b u delta: )
+  r> t' match lit look swap r> - >r - r> 1+ 
+  >in +!
+  r> bl = if -trailing then #0 max ;
 : >number ( ud b u -- ud b u : convert string to number )
   begin
     2dup >r >r drop c@ base?        ( get next character )
@@ -737,7 +740,6 @@ hvar #h          ( -- a : dictionary pointer )
       if rdrop nep exit then
     then
   next 2drop #0 ;
-:to .s depth for aft r@ pick . then next ;
 :m nfa cell+ ;m ( pwd -- nfa : move word ptr to name field )
 :h cfa nfa dup c@ 1F lit and + cell+ cell negate and ; 
 :h (find) ( a wid -- PWD PWD 1|PWD PWD -1|0 a 0 )
@@ -818,13 +820,22 @@ hvar #h          ( -- a : dictionary pointer )
 :to \ source drop @ in! ; immediate
 :to immediate last nfa @ 40 lit or last nfa ! ;
 : dump 2/ for dup @ u. cell+ next drop ;
-: eval begin bl word dup c@ while 
+: eval ( -- )
+   begin bl word dup c@ while
    interpret #1 ?depth repeat drop ."  ok" cr ;
 :h ini hex postpone [ #0 in! #-1 dpl ! ; ( -- )
+: info ( -- )
+  cr
+  ." Project: eForth Interpreter" cr
+  ." Author:  Richard James Howe" cr
+  ." License: MIT / Public Domain" cr
+  ." Email:   howe.r.j.89@gmail.com" cr ;
 : quit ( -- : interpreter loop [and more] )
   there t2/ <cold> t! \ program entry point set here
   ." eForth 3.3" cr 
   ini
+\  $" here" interpret $" ." interpret cr
+\  $" words" interpret cr
   begin
     query t' eval lit catch
     ( ?error -> ) ?dup if
@@ -842,7 +853,4 @@ save-target vm.bin
 .end
 .( DONE ) cr
 bye
-
-
-
 
