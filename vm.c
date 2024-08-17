@@ -1,3 +1,4 @@
+/* 16-bit Accumulator based VM designed to be built in 7400 series ICs */
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -29,7 +30,7 @@ static inline void store(vm_t *v, uint16_t addr, uint16_t val) {
 
 static int run(vm_t *v) {
 	assert(v);
-	uint16_t pc = v->pc, a = v->pc, *m = v->m;
+	uint16_t pc = v->pc, a = v->pc, *m = v->m; /* load machine state */
 	for (int running = 1; running;) {
 		const uint16_t ins = m[pc % SZ];
 		const uint16_t imm = ins & 0xFFF;
@@ -54,7 +55,7 @@ static int run(vm_t *v) {
 		case 15: pc = load(v, imm); break;
 		}
 	}
-	v->pc = pc;
+	v->pc = pc; /* save machine state */
 	v->a = a;
 	return 0;
 }
@@ -75,7 +76,7 @@ static int option(const char *opt) {
 }
 
 int main(int argc, char **argv) {
-	vm_t vm = { .put = put, .get = get, .in = stdin, .out = stdout, /*.debug = stderr,*/ };
+	vm_t vm = { .put = put, .get = get, .in = stdin, .out = stdout, };
 	vm.debug = option("DEBUG") ? stderr : NULL; /* lazy options */
 	if (argc < 2) {
 		(void)fprintf(stderr, "Usage: %s prog.hex\n", argv[0]);
@@ -88,7 +89,7 @@ int main(int argc, char **argv) {
 	}
 	for (size_t i = 0; i < SZ; i++) {
 		unsigned long d = 0;
-		if (fscanf(prog, "%lx,", &d) != 1)
+		if (fscanf(prog, "%lx,", &d) != 1) /* optional comma */
 			break;
 		vm.m[i] = d;
 	}

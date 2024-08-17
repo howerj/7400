@@ -11,5 +11,8 @@ vm.hex: vm.fth
 
 vm: vm.c
 
+vm.tgz: vm.md vm.c vm.hex
+	tar zvcf $@ $^
+
 clean:
 	git clean -dffx

@@ -1,18 +1,18 @@
 \ Author: Richard James Howe
 \ Email: howe.r.j.89@gmail.com
-\ Repo: https://github.com/howerj/bit-serial
+\ Repo: https://github.com/howerj/7400
 \ License: MIT
 \
-\ Cross Compiler and eForth interpreter for the bit-serial CPU 
-\ available at:
-\
-\   <https://github.com/howerj/bit-serial>
-\
-\ This implements a Direct Threaded Code virtual machine on 
-\ which we can build a Forth interpreter.
+\ Cross Compiler and eForth interpreter for a (currently
+\ in the design stage) CPU which will be built out of 7400
+\ series logic. This Forth is based of a eForth implementation
+\ for a 16-bit Bit-Serial CPU with an instruction set that
+\ is similar to this one CPUs instruction set. Some CPU 
+\ features are still To-Be-Decided.
 \
 \ References:
 \
+\ - <https://github.com/howerj/bit-serial>
 \ - <https://en.wikipedia.org/wiki/Threaded_code>
 \ - <https://github.com/howerj/embed>
 \ - <https://github.com/howerj/forth-cpu>
@@ -155,19 +155,15 @@ size =cell - tep !
 : iSTORE   2/ 2000 or t, ;
 : iLITERAL    3000 or t, ; \ Load 12-bit literal into accm
 : iSTORE-C 2/ 4000 or t, ; \ Load address
-
 : iADD     5000 or t, ;
 : iNOP1    6000 or t, ;
-
 : iAND     7000 or t, ;
 : iOR      8000 or t, ;
 : iXOR     9000 or t, ;
 : iRSHIFT  A000 t, ;
 : iJUMP    B000 or t, ; \ Unconditional jump
 : iJUMPZ   C000 or t, ; \ Conditional Jump!
-
 : iNOP2    D000 or t, ;
-
 : iCALL    E000 or t, ;
 : iPC!     F000 or t, ;
 
