@@ -3,7 +3,7 @@
 This project contains a Virtual Machine for a 16-bit Accumulator based
 CPU/system and a Forth interpreter for that system. It is designed so that
 the CPU should be implementable in 7400 series logic circuits (and some
-RAM/ROM).
+RAM/ROM). The system will never likely be implemented as is.
 
 To build:
 
