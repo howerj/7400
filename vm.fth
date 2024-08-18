@@ -32,14 +32,13 @@
 \ documentation, a better decompiler, a "self-interpreter", a
 \ block editor and block system, sleep, "create...does>", more 
 \ control words, better terminal handling, optional die on EOF, 
-\ image options, and much more) and is self-hosting.
+\ image options, and much more) and is self-hosting. The code
+\ in there could be ported to this platform if needed.
 \
 \ The cross compiler has been tested and works with gforth 
-\ versions 0.7.0 and 0.7.3. An already compiled image (called 
-\ `bit.hex`) should be available if you do not have gforth 
+\ version 0.7.3. An already compiled image (called 
+\ `vm.hex`) should be available if you do not have gforth 
 \ installed.
-\
-\ The threading model could be changed to save on space.
 \
 
 only forth also definitions hex
@@ -489,12 +488,13 @@ a: (key) ( -- u )
   tos iSTORE-C
   a;
 
-\ VM+primitives are less than 350 bytes!
 there t2/ negate primitive t! \ Forth code after this
 \ --- ---- ---- ---- no more direct assembly ---- ---- ---- --- 
 
 assembler.1 -order
 
+:m : :t ;m
+:m ; ;t ;m
 :h #1 1 lit ;t ( --  1 : push  1 onto variable stack )
 :h #-1 -1 lit ;t
 :to + + ;t ( n n -- n )
@@ -517,8 +517,6 @@ assembler.1 -order
 FF hconst #ff  ( -- 255 : space saving measure, push `255` )
 20 constant bl   ( -- space : push a space, 32 )
  2 constant cell ( -- u: size of memory cell in bytes )
-:m : :t ;m
-:m ; ;t ;m
 :to bye bye ; ( -- )
 :to and and ; ( u u -- u )
 :to or or ; ( u u -- u )
@@ -828,10 +826,8 @@ hvar #h          ( -- a : dictionary pointer )
   ." Email:   howe.r.j.89@gmail.com" cr ;
 : quit ( -- : interpreter loop [and more] )
   there t2/ <cold> t! \ program entry point set here
-  ." eForth 3.3" cr 
   ini
-\  $" here" interpret $" ." interpret cr
-\  $" words" interpret cr
+  ." eForth 3.3" cr 
   begin
     query t' eval lit catch
     ( ?error -> ) ?dup if
